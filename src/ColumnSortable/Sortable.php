@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Kyslik\ColumnSortable\Exceptions\ColumnSortableException;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder;
 
-use Kyslik\ColumnSortable\Exceptions\ColumnSortableException;
 /**
  * Trait Sortable.
  */
@@ -70,6 +70,7 @@ trait Sortable
         $query = $query->leftJoin($relatedModel->getTable(), $relatedKey, '=', $parentKey);
 
         $baseQuery = $relation->getQuery();
+
       }
 
       return $relation->getRelated();
@@ -89,8 +90,9 @@ trait Sortable
         $sortList = $this->getSortable();
         $sortKey = array_get($a, 'sort', null);
         $sortName = $sort = array_get($sortList, $sortKey, $sortKey);
+        $isRawSort = strpos($sortName, 'FIELD(') === 0;
 
-        if(!$this->sortExists($this, $sortName)) { //ignore integer sortable keys
+        if(!$this->sortExists($this, $sortName)) { //Ignore integer sortable keys
           return $query;
         }
 
@@ -101,15 +103,18 @@ trait Sortable
         if (!is_null($sort)) {
             $relations = $this->getSortRelations($sort);
 
-            if (!is_null($relations)) {
+            if (!is_null($relations) && !$isRawSort) {
               $model = $this->queryJoinBuilder($query, $relations['relations']);
               $sort = $relations['field'];
             }
 
-            $sort = $model->getTable() . '.' . $sort;
-
             if ($this->sortExists($this, $sortName)) {
-                $query = $query->orderBy($sort, $order);
+            	if(strpos($sortName, 'FIELD(') === 0){
+            		$query = $query->orderByRaw($sortName . ' ' . $order);
+            	}else{
+            		$sort = $model->getTable() . '.' . $sort;
+                	$query = $query->orderBy($sort, $order);
+            	}
             }
 
         }
@@ -143,6 +148,7 @@ trait Sortable
         if (Input::get('sort') == $sortOriginal && in_array(Input::get('order'), ['asc', 'desc'])) {
             $asc_suffix = Config::get('columnsortable.asc_suffix', '-asc');
             $desc_suffix = Config::get('columnsortable.desc_suffix', '-desc');
+
             $icon = $icon . (Input::get('order') === 'asc' ? $asc_suffix : $desc_suffix);
         } else {
             $icon = Config::get('columnsortable.sortable_icon');
